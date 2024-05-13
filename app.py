@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import feedparser
+from transformers import pipeline
 
 class ArxivScraper:
     def __init__(self):
@@ -9,6 +10,7 @@ class ArxivScraper:
         self.start = 0
         self.max_results = 10
         self.results = []
+        self.generator = pipeline('text-generation', model='EleutherAI/gpt-neo-2.7B')
 
     def set_search_term(self, term):
         if not term.strip():
@@ -35,11 +37,15 @@ class ArxivScraper:
         query = f"search_query=ti:{self.search_term}&start={self.start}&max_results={self.max_results}"
         try:
             response = requests.get(self.base_url + query)
-            response.raise_for_status()  # Raises an HTTPError for bad responses
+            response.raise_for_status()
             feed = feedparser.parse(response.content)
             self.results = sorted(feed.entries, key=lambda x: x.published_parsed, reverse=True)
         except requests.RequestException as e:
             st.error(f"Failed to fetch data: {str(e)}")
+
+    def generate_explanation(self, summary):
+        result = self.generator(summary, max_length=150, num_return_sequences=1)[0]
+        return result['generated_text']
 
     def display_results(self):
         if not self.results:
@@ -49,6 +55,8 @@ class ArxivScraper:
             with st.container():
                 st.markdown(f"### {entry.title}")
                 st.markdown(f"[Read More]({entry.link})")
+                explanation = self.generate_explanation(entry.summary)
+                st.markdown(f"**Detailed Explanation:** {explanation}")
                 st.markdown(f"**Summary:** {entry.summary}")
                 st.write("Published:", entry.published)
                 st.write("="*60)
