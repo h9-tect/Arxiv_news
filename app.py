@@ -11,29 +11,40 @@ class ArxivScraper:
         self.results = []
 
     def set_search_term(self, term):
+        if not term.strip():
+            st.error("Search term cannot be empty.")
+            return False
         self.search_term = term
+        return True
 
     def set_start(self, start):
+        if start < 0:
+            st.error("Starting index must be non-negative.")
+            return False
         self.start = start
+        return True
 
     def set_max_results(self, max_results):
+        if not (1 <= max_results <= 100):
+            st.error("Maximum results must be between 1 and 100.")
+            return False
         self.max_results = max_results
+        return True
 
     def execute_query(self):
         query = f"search_query=ti:{self.search_term}&start={self.start}&max_results={self.max_results}"
-        response = requests.get(self.base_url + query)
-
-        if response.status_code != 200:
-            st.error("Error fetching data from ArXiv!")
-            return
-
-        feed = feedparser.parse(response.content)
-
-        # Sorting results based on publication date in descending order
-        sorted_entries = sorted(feed.entries, key=lambda x: x.published_parsed, reverse=True)
-        self.results = sorted_entries
+        try:
+            response = requests.get(self.base_url + query)
+            response.raise_for_status()  # Raises an HTTPError for bad responses
+            feed = feedparser.parse(response.content)
+            self.results = sorted(feed.entries, key=lambda x: x.published_parsed, reverse=True)
+        except requests.RequestException as e:
+            st.error(f"Failed to fetch data: {str(e)}")
 
     def display_results(self):
+        if not self.results:
+            st.write("No results found.")
+            return
         for entry in self.results:
             with st.container():
                 st.markdown(f"### {entry.title}")
@@ -42,17 +53,13 @@ class ArxivScraper:
                 st.write("Published:", entry.published)
                 st.write("="*60)
 
-# Streamlit app starts here
 st.title('ArXiv Scraper')
 
 scraper = ArxivScraper()
 
-# Input fields
-scraper.set_search_term(st.text_input("Enter the search term"))
-scraper.set_start(st.number_input("Enter the starting index (default is 0)", min_value=0, value=0, step=1))
-scraper.set_max_results(st.number_input("Enter the maximum number of results (default is 10)", min_value=1, value=10, step=1))
-
-if st.button('Scrape'):
-    scraper.execute_query()
-    scraper.display_results()
-
+if scraper.set_search_term(st.text_input("Enter the search term")):
+    if scraper.set_start(st.number_input("Enter the starting index (default is 0)", min_value=0, value=0, step=1)):
+        if scraper.set_max_results(st.number_input("Enter the maximum number of results (default is 10)", min_value=1, value=10, step=1)):
+            if st.button('Scrape'):
+                scraper.execute_query()
+                scraper.display_results()
